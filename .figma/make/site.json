@@ -1,0 +1,10 @@
+{
+  "description": "Transforms user notes into fully formatted websites instantly, enabling easy online publishing without coding for individuals and businesses.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

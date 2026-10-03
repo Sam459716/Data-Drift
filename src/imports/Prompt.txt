@@ -1,0 +1,1018 @@
+# MASTER PROMPT — Upgrade Legal Metrology Workflow App
+
+You are an expert full-stack software engineer, UI/UX designer, AI engineer, and system architect.
+
+I am providing you with an existing **Legal Metrology Workflow App** project. Your task is to **modify and upgrade the existing project**, not create an unrelated application from scratch.
+
+## 1. IMPORTANT INSTRUCTIONS
+
+First, thoroughly inspect the entire existing project:
+
+* Understand the current folder structure.
+* Understand the existing frontend.
+* Understand all existing pages, components, routes, forms, dashboards, workflows and data models.
+* Identify which features are already implemented.
+* Preserve all existing working features.
+* Do NOT unnecessarily redesign or remove existing functionality.
+* Maintain the existing design language wherever possible.
+* Improve the UI only where required for the new functionality.
+* Make the application fully responsive for desktop, tablet and mobile.
+* Use reusable components and clean architecture.
+* Do not create fake buttons that do nothing.
+* Every major button, form, filter, workflow and navigation item must actually work.
+* If a real backend/API is not currently present, create a proper backend architecture or a realistic mock/service layer that can later be connected to a production backend.
+* Do not replace existing functionality with placeholders.
+
+---
+
+# 2. EXISTING SYSTEM
+
+The application is a **Legal Metrology Management and Workflow System** with roles such as:
+
+### Business/Consumer/User
+
+* Registration/login
+* Business profile
+* Instrument registration
+* Verification/re-verification applications
+* Application tracking
+* Payment information
+* Certificate information
+* QR verification
+* Notifications
+
+### Officer
+
+* Officer dashboard
+* Assigned verification cases
+* Inspection workflow
+* Inspection checklist
+* Instrument information
+* Verification decision
+* Officer remarks
+* Risk/inspection information
+
+### Admin
+
+* Admin dashboard
+* Application management
+* Instrument management
+* User management
+* Officer management
+* Analytics
+* Audit logs
+* Application statistics
+* Revenue statistics
+* District-wise information
+
+Preserve these existing capabilities.
+
+---
+
+# 3. ADD ALL MISSING FEATURES
+
+Implement the following features completely and integrate them into the existing system.
+
+---
+
+# FEATURE 1 — AI-BASED INTELLIGENCE
+
+Create an AI-assisted Legal Metrology intelligence system.
+
+The AI system should analyze:
+
+* Instrument information
+* Business information
+* Previous inspection history
+* Previous violations
+* Complaint history
+* Certificate history
+* Application patterns
+* Inspection results
+* Uploaded evidence
+* Officer observations
+
+Generate:
+
+### AI Risk Score
+
+Example:
+
+Risk Score: 82/100
+Risk Level: HIGH
+
+Possible levels:
+
+* LOW
+* MEDIUM
+* HIGH
+* CRITICAL
+
+### AI Recommendations
+
+For example:
+
+"Previous inspection failed twice and three consumer complaints were recorded. Recommend priority inspection."
+
+### AI Inspection Summary
+
+After an officer completes an inspection, automatically generate a concise summary of:
+
+* Findings
+* Violations
+* Evidence
+* Risk level
+* Recommended action
+
+Clearly label AI-generated information as AI-assisted.
+
+---
+
+# FEATURE 2 — FRAUD DETECTION
+
+Create a dedicated **Fraud Detection Engine**.
+
+Detect suspicious patterns such as:
+
+* Duplicate applications
+* Duplicate instrument serial numbers
+* Duplicate certificates
+* Suspicious certificate information
+* Multiple businesses using the same instrument details
+* Repeated failed inspections
+* Suspicious location changes
+* Suspicious evidence submissions
+* Unusual application behavior
+* Abnormal payment/application patterns
+
+Generate:
+
+### Fraud Risk Score
+
+Example:
+
+Fraud Risk: 76/100
+Status: SUSPICIOUS
+
+Create fraud categories:
+
+* Duplicate Data
+* Certificate Anomaly
+* Location Anomaly
+* Evidence Anomaly
+* Application Anomaly
+* Behavioral Anomaly
+
+Admin should be able to see:
+
+* Fraud alerts
+* Risk score
+* Reason for flagging
+* Related applications
+* Related businesses
+* Related instruments
+* Investigation status
+
+Add:
+
+**Fraud Alert → Review → Investigation → Cleared / Confirmed**
+
+Do NOT automatically accuse a user of fraud. Mark suspicious records for human review.
+
+---
+
+# FEATURE 3 — GEO-TAGGING
+
+Add GPS-based inspection location tracking.
+
+When an officer starts an inspection:
+
+* Request browser/device location permission.
+* Capture latitude.
+* Capture longitude.
+* Capture timestamp.
+* Store inspection location.
+* Display location on a map.
+
+Display:
+
+* Registered business location
+* Actual inspection location
+* Distance between them
+* Location verification status
+
+Example:
+
+Registered Location:
+Nashik
+
+Inspection Location:
+Nashik
+
+Distance:
+1.4 km
+
+Status:
+✓ Location Verified
+
+If the inspection location is significantly different:
+
+⚠ Location Mismatch Detected
+
+Add configurable distance thresholds.
+
+The officer should also see:
+
+**Capture Current Location**
+
+---
+
+# FEATURE 4 — DIGITAL EVIDENCE / PHOTO UPLOAD
+
+Create a complete digital evidence management system.
+
+Officers should be able to:
+
+* Take/upload inspection photos
+* Upload documents
+* Upload certificates
+* Upload weighing-machine/instrument photos
+* Upload seal photos
+* Upload meter/display photos
+* Upload violation evidence
+* Upload before/after photos
+
+For each uploaded file store:
+
+* File name
+* File type
+* Upload time
+* Officer ID
+* Application ID
+* Instrument ID
+* GPS location
+* Timestamp
+
+Create an evidence gallery.
+
+Allow:
+
+* Preview
+* Download/view
+* Delete before final submission
+* Categorize evidence
+
+Evidence categories:
+
+* Instrument
+* Seal
+* Display
+* Documents
+* Location
+* Violation
+* Other
+
+Add an evidence audit trail.
+
+---
+
+# FEATURE 5 — CONSUMER COMPLAINT SYSTEM
+
+Create a complete consumer complaint module.
+
+Consumers should be able to:
+
+### Submit Complaint
+
+Fields:
+
+* Complaint category
+* Business name
+* Instrument type
+* Location
+* Description
+* Date
+* Photo/document evidence
+* Contact information
+
+Generate:
+
+**Complaint ID**
+
+Example:
+
+LM-CMP-2026-00125
+
+Complaint statuses:
+
+1. Submitted
+2. Under Review
+3. Assigned
+4. Investigation
+5. Action Taken
+6. Resolved
+7. Rejected
+
+Consumer dashboard should show:
+
+* Total complaints
+* Pending complaints
+* Under investigation
+* Resolved complaints
+
+Consumer should be able to track complaints using Complaint ID.
+
+---
+
+# FEATURE 6 — SMART AUTOMATIC OFFICER ASSIGNMENT
+
+Create an intelligent officer assignment engine.
+
+When a complaint/application requires an officer, automatically select the most suitable officer using:
+
+### Factors
+
+* Geographic distance
+* District
+* Officer availability
+* Current workload
+* Instrument specialization
+* Case priority
+* Risk score
+* Complaint severity
+* Previous assignments
+
+Example scoring:
+
+Officer A:
+Distance = 5 km
+Workload = Low
+Specialization = Excellent
+
+Officer B:
+Distance = 2 km
+Workload = Very High
+Specialization = Medium
+
+System should intelligently choose Officer A if overall suitability is higher.
+
+Display:
+
+**Recommended Officer**
+
+Officer Name
+District
+Distance
+Current Workload
+Specialization
+Assignment Score
+
+Admin can:
+
+* Accept recommendation
+* Manually override assignment
+* Reassign case
+
+Maintain assignment history.
+
+---
+
+# FEATURE 7 — COMPLIANCE SCORE
+
+Create a dynamic compliance scoring system for businesses and instruments.
+
+Score range:
+
+**0–100**
+
+Calculate based on:
+
+* Certificate validity
+* Timely renewal
+* Previous inspections
+* Failed inspections
+* Violations
+* Complaint history
+* Penalties
+* Documentation completeness
+* Verification history
+* Compliance trends
+
+Example:
+
+## Compliance Score
+
+87/100
+
+Status:
+GOOD
+
+Categories:
+
+90–100 → Excellent
+75–89 → Good
+50–74 → Moderate
+25–49 → High Risk
+0–24 → Critical
+
+Create a detailed breakdown.
+
+Example:
+
+Certificate Compliance: 95%
+Inspection Compliance: 88%
+Complaint Record: 82%
+Documentation: 90%
+Renewal History: 80%
+
+Display a visual score meter.
+
+The score should update when relevant events occur.
+
+---
+
+# FEATURE 8 — AI CHATBOT
+
+Create an AI chatbot accessible from the main application.
+
+The chatbot should support different roles.
+
+## Consumer
+
+Questions such as:
+
+* How can I submit a complaint?
+* How do I verify a Legal Metrology certificate?
+* What should I do if a weighing machine is inaccurate?
+* How can I track my complaint?
+
+## Business
+
+Questions such as:
+
+* How do I register an instrument?
+* How do I apply for verification?
+* What documents are required?
+* When does my certificate expire?
+* What is my compliance score?
+
+## Officer
+
+Questions such as:
+
+* What inspections are pending?
+* Show high-risk cases.
+* Summarize this inspection.
+* What evidence is required?
+* Which cases should I prioritize?
+
+## Admin
+
+Questions such as:
+
+* How many complaints were received this month?
+* Which district has the highest violations?
+* Which officers have the highest workload?
+* How many fraud alerts are pending?
+* Show high-risk businesses.
+
+The chatbot should be context-aware based on the logged-in role.
+
+Provide suggested questions.
+
+If an actual LLM API is not configured, create a clean AI service abstraction/mock implementation so an API such as OpenAI can be connected later without rewriting the UI.
+
+---
+
+# FEATURE 9 — ADVANCED ANALYTICS
+
+Upgrade the existing analytics dashboard significantly.
+
+Create analytics for:
+
+### Applications
+
+* Total applications
+* Pending
+* Approved
+* Rejected
+* Under inspection
+* Re-verification
+
+### Inspections
+
+* Total inspections
+* Passed
+* Failed
+* Pending
+* Average inspection time
+
+### Complaints
+
+* Total complaints
+* Open complaints
+* Resolved complaints
+* Average resolution time
+* Complaints by district
+* Complaints by category
+
+### Fraud
+
+* Fraud alerts
+* High-risk cases
+* Confirmed fraud
+* Cleared alerts
+* Fraud trends
+
+### Compliance
+
+* Average compliance score
+* High-risk businesses
+* Excellent businesses
+* Compliance distribution
+
+### Officers
+
+* Workload
+* Completed inspections
+* Pending cases
+* Average resolution time
+* Success/pass rate
+* Geographic coverage
+
+### Geography
+
+Create maps/heatmaps showing:
+
+* Applications by district
+* Complaints by district
+* Inspections
+* Violations
+* Fraud alerts
+* High-risk areas
+
+### Time-based Analytics
+
+Allow:
+
+* Today
+* 7 days
+* 30 days
+* 6 months
+* 1 year
+* Custom date range
+
+Use interactive charts.
+
+---
+
+# 4. OFFICER DASHBOARD UPGRADE
+
+Create a powerful Officer Dashboard containing:
+
+### Overview Cards
+
+* Assigned Cases
+* Pending Inspections
+* Today's Inspections
+* High-Risk Cases
+* Complaints
+* Expiring Certificates
+
+### Priority Queue
+
+Show:
+
+🔴 Critical
+🟠 High
+🟡 Medium
+🟢 Low
+
+Sort automatically using risk and urgency.
+
+### Map
+
+Show:
+
+* Today's inspections
+* Assigned cases
+* Business locations
+* Complaint locations
+
+### Inspection Workflow
+
+Officer clicks:
+
+**Start Inspection**
+
+Then:
+
+1. View business
+2. View instrument
+3. Capture GPS
+4. Complete checklist
+5. Upload evidence
+6. Record measurements
+7. AI risk analysis
+8. Review findings
+9. Approve/Reject
+10. Submit inspection
+
+---
+
+# 5. ADMIN DASHBOARD UPGRADE
+
+Add dedicated sections:
+
+* Overview
+* Applications
+* Instruments
+* Businesses
+* Consumers
+* Officers
+* Complaints
+* Inspections
+* Fraud Detection
+* Compliance
+* AI Analytics
+* Geo Analytics
+* Evidence
+* Certificates
+* Payments
+* Notifications
+* Audit Logs
+* System Settings
+
+Add filters:
+
+* District
+* Date
+* Status
+* Risk
+* Officer
+* Instrument type
+* Complaint category
+
+---
+
+# 6. NOTIFICATION SYSTEM
+
+Create notifications for:
+
+### Consumer/Business
+
+* Application submitted
+* Application approved
+* Application rejected
+* Inspection scheduled
+* Certificate generated
+* Certificate expiring
+* Complaint update
+
+### Officer
+
+* New assignment
+* High-risk case
+* Complaint assigned
+* Inspection reminder
+* Location/evidence warning
+
+### Admin
+
+* Fraud alert
+* Critical complaint
+* Officer overload
+* High-risk business
+* System alerts
+
+---
+
+# 7. AUDIT TRAIL
+
+Every important action should be recorded.
+
+Store:
+
+* User
+* Role
+* Action
+* Record ID
+* Timestamp
+* IP/device information where appropriate
+* Previous value
+* New value
+
+Examples:
+
+"Officer assigned application LM-APP-1024"
+
+"Officer uploaded inspection evidence"
+
+"Admin reassigned complaint"
+
+"Certificate status changed"
+
+Make audit logs available to Admin.
+
+---
+
+# 8. ROLE-BASED ACCESS CONTROL
+
+Implement clear permissions.
+
+### Consumer/Business
+
+Can access:
+
+* Own profile
+* Own applications
+* Own instruments
+* Own certificates
+* Own complaints
+* Own compliance score
+
+### Officer
+
+Can access:
+
+* Assigned cases
+* Assigned complaints
+* Inspections
+* Evidence
+* GPS inspection
+* AI analysis
+
+### Admin
+
+Can access:
+
+* Everything
+* User management
+* Officer management
+* Analytics
+* Fraud detection
+* System settings
+* Audit logs
+
+Never expose sensitive admin functionality to normal users.
+
+---
+
+# 9. DATABASE / BACKEND ARCHITECTURE
+
+If backend is not currently implemented, create a scalable architecture.
+
+Suggested entities:
+
+* users
+* businesses
+* consumers
+* officers
+* instruments
+* applications
+* inspections
+* inspection_checklists
+* evidence
+* certificates
+* complaints
+* officer_assignments
+* fraud_alerts
+* compliance_scores
+* notifications
+* audit_logs
+* payments
+* ai_analysis
+
+Use proper relationships.
+
+Example:
+
+Business
+→ Instruments
+→ Applications
+→ Inspections
+→ Evidence
+→ Certificates
+→ Compliance Score
+
+Consumer
+→ Complaints
+→ Complaint Evidence
+→ Assigned Officer
+→ Resolution
+
+---
+
+# 10. UI/UX REQUIREMENTS
+
+Keep the existing application's visual identity but improve usability.
+
+Use:
+
+* Clean government/professional dashboard
+* Responsive design
+* Sidebar navigation
+* Cards
+* Tables
+* Charts
+* Status badges
+* Maps
+* Modals
+* Toast notifications
+* Search
+* Filters
+* Pagination
+* Loading states
+* Empty states
+* Error states
+* Confirmation dialogs
+
+Use consistent status colors and icons.
+
+Do not overcrowd the interface.
+
+---
+
+# 11. SECURITY
+
+Implement appropriate security architecture:
+
+* Authentication
+* Password hashing
+* Role-based authorization
+* Input validation
+* File validation
+* File size restrictions
+* Secure upload handling
+* API authorization
+* Audit logs
+* Protection against duplicate submissions
+* Basic rate limiting architecture
+
+Never expose secrets/API keys in frontend code.
+
+Use environment variables.
+
+---
+
+# 12. AI ARCHITECTURE
+
+Do not hard-code AI functionality directly into UI components.
+
+Create separate services such as:
+
+* `aiRiskService`
+* `fraudDetectionService`
+* `chatbotService`
+* `complianceService`
+* `officerAssignmentService`
+
+This should make it possible to replace mock AI with real AI APIs later.
+
+For prototype/demo mode, provide deterministic realistic results rather than random values that change every refresh.
+
+---
+
+# 13. DEMO DATA
+
+Create realistic demo data for:
+
+* Businesses
+* Consumers
+* Officers
+* Instruments
+* Applications
+* Complaints
+* Inspections
+* Certificates
+* Fraud alerts
+* Compliance scores
+* Evidence
+* Notifications
+
+Use Indian context and Indian districts/states where appropriate.
+
+Example districts:
+
+* Nashik
+* Pune
+* Mumbai
+* Nagpur
+* Aurangabad/Chhatrapati Sambhajinagar
+* Thane
+
+Do not use real people's personal information.
+
+---
+
+# 14. SEARCH AND FILTERING
+
+Global search should support:
+
+* Business name
+* Instrument ID
+* Serial number
+* Application ID
+* Certificate ID
+* Complaint ID
+* Officer
+* District
+
+Add advanced filtering wherever appropriate.
+
+---
+
+# 15. FINAL QUALITY REQUIREMENTS
+
+Before completing the project:
+
+1. Check every route.
+2. Check every navigation item.
+3. Check every form.
+4. Check every button.
+5. Check all dashboard cards.
+6. Check tables and filters.
+7. Check mobile responsiveness.
+8. Check role permissions.
+9. Check complaint workflow.
+10. Check officer assignment workflow.
+11. Check GPS workflow.
+12. Check evidence upload workflow.
+13. Check fraud detection.
+14. Check compliance scoring.
+15. Check AI chatbot.
+16. Check analytics.
+17. Check notifications.
+18. Check audit logs.
+19. Remove unnecessary placeholder screens.
+20. Fix console errors.
+21. Fix broken imports.
+22. Fix TypeScript/JavaScript errors.
+23. Ensure the project builds successfully.
+
+---
+
+# 16. MOST IMPORTANT REQUIREMENT
+
+Do NOT simply add 9 separate pages.
+
+All features must be **integrated into the existing Legal Metrology workflow**.
+
+The final workflow should be:
+
+Business/Consumer
+↓
+Application / Complaint
+↓
+AI Risk Analysis
+↓
+Fraud Detection
+↓
+Compliance Score
+↓
+Priority Calculation
+↓
+Smart Officer Assignment
+↓
+Officer Inspection
+↓
+GPS Geo-tagging
+↓
+Digital Evidence Upload
+↓
+AI Inspection Analysis
+↓
+Officer Decision
+↓
+Certificate / Enforcement Action
+↓
+Notification
+↓
+Analytics + Audit Trail
+
+---
+
+# 17. EXPECTED FINAL RESULT
+
+The final application should feel like a complete **Smart Digital Legal Metrology Management Platform**, not a basic CRUD application.
+
+It should combine:
+
+**Legal Metrology + AI + Fraud Detection + GIS/Geo-tagging + Digital Evidence + Consumer Complaints + Intelligent Officer Assignment + Compliance Scoring + AI Chatbot + Advanced Analytics**
+
+while preserving the existing application's functionality and UI wherever possible.
+
+After implementation, provide:
+
+1. Updated project structure
+2. List of newly added features
+3. List of modified files
+4. Backend/API details
+5. Database schema
+6. Environment variables required
+7. How to run the application
+8. Test/demo credentials if applicable
+9. Any remaining limitations
+10. Clear instructions for connecting real AI, database, maps, storage and authentication services
+
+**Do not stop after creating the UI. Implement the complete functional workflow wherever technically possible.**

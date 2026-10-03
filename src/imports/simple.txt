@@ -1,0 +1,14 @@
+Add a Voice Input / Microphone feature to the existing AI Assistant.
+
+- Add a microphone icon 🎙️ inside the AI Assistant message input box, beside the Send button.
+- When the user clicks the microphone, activate voice recording and show a clear “Listening…” indicator with an animated waveform.
+- Convert the user's speech into text automatically and place the transcribed text inside the chat input.
+- Let the user edit the transcribed text before sending.
+- Clicking the microphone again should stop recording.
+- Add a small cancel option while recording.
+- Keep the existing AI Assistant design, layout, colors, typography, and functionality unchanged.
+- Make the microphone button modern, clean, and consistent with the existing DataDrift UI.
+- Make it fully responsive for mobile and desktop.
+- Include proper microphone permission handling and show a friendly message if permission is denied.
+- The final experience should feel like a modern AI chatbot with seamless type + speak input.
+- Make the voice input actually functional, not just a visual mockup.

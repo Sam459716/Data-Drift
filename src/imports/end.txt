@@ -1,0 +1,108 @@
+Add the following three features to the existing DataDrift Legal Metrology Verification & Digital Certification platform without changing the existing design language, navigation, colors, typography, or functionality.
+
+1. AI-Based Fraud Detection
+
+Create a dedicated Fraud Detection module in the Officer/Admin Dashboard.
+
+Features:
+
+- AI-powered analysis of instrument verification records and inspection data.
+- Detect suspicious or inconsistent verification records.
+- Flag unusual changes in instrument readings, repeated failed inspections, duplicate records, suspicious certificates, and abnormal verification patterns.
+- Display a Fraud Risk Score such as Low, Medium, High, or Critical.
+- Show flagged cases in a table with:
+  - Instrument ID
+  - Owner/Business
+  - Location
+  - Verification date
+  - Risk score
+  - Reason for flag
+  - Assigned officer
+  - Case status
+- Add a detailed Fraud Case View showing the evidence and reasons why the record was flagged.
+- Allow authorized officers/admins to mark a case as Under Review, Verified, False Positive, or Confirmed Fraud.
+- Add summary cards showing:
+  - Total records analyzed
+  - Suspicious records
+  - High-risk cases
+  - Confirmed fraud cases
+- Use realistic demo data so the feature looks functional.
+
+2. Geo-Tagging
+
+Add Geo-Tagging to instrument registration, inspection, and verification workflows.
+
+Features:
+
+- Capture the inspection/verification location using GPS when available.
+- Display latitude and longitude for each inspection.
+- Show the inspection location on an interactive map.
+- Add a location marker with:
+  - Instrument ID
+  - Business/owner name
+  - Verification date
+  - Officer name
+  - Verification status
+- Store location information with the inspection record.
+- Add a “View on Map” option in instrument and verification details.
+- In the Officer Dashboard, add a Geo-Tagged Inspections map showing completed, pending, and flagged inspections.
+- Clearly indicate when location permission is unavailable.
+- Make the feature responsive for both mobile and desktop.
+
+3. Advanced Analytics Dashboard
+
+Create a professional Advanced Analytics section for authorized officers and administrators.
+
+Include interactive charts and KPI cards for:
+
+Verification Analytics
+
+- Total instruments registered
+- Total verified
+- Pending verification
+- Failed verification
+- Expired certificates
+- Re-verifications completed
+
+Time-Based Analytics
+
+- Daily/weekly/monthly verification trends
+- Applications received vs completed
+- Average verification processing time
+
+Geographical Analytics
+
+- Inspections by district/city
+- Verification density by location
+- Geo-tagged inspection distribution
+
+Compliance Analytics
+
+- Overall compliance score
+- Compliance by business/owner
+- Compliance by instrument type
+- High-risk/non-compliant instruments
+
+Fraud Analytics
+
+- Fraud cases detected
+- Fraud risk distribution
+- Fraud trends over time
+- High-risk locations/instruments
+
+Add:
+
+- Interactive filters for date, location, instrument type, verification status, and officer.
+- Charts that update based on selected filters.
+- Download/export options for authorized users.
+- Clear legends, tooltips, and readable visualizations.
+- Use realistic sample data instead of empty charts.
+
+Integration
+
+Connect all three modules with the existing platform:
+Instrument Registration → Verification → Inspection → Geo-Tagging → Digital Evidence → Fraud Detection → Certificate → Analytics
+
+Add appropriate navigation items for Fraud Detection, Geo-Tagged Inspections, and Advanced Analytics.
+
+Ensure the features are presented as a polished, professional government-grade Legal Metrology platform suitable for the Smart India Hackathon 2026.
