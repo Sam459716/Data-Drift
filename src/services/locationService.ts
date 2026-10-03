@@ -73,3 +73,44 @@ export function watchLocation(
 export function formatAccuracy(metres: number): string {
   return metres < 50 ? `±${Math.round(metres)} m` : `±${(metres / 1000).toFixed(1)} km`;
 }
+
+export interface GeocodeResult {
+  formatted: string;
+  city?: string;
+  state?: string;
+  area?: string;
+}
+
+const GEOCODE_CACHE = new Map<string, GeocodeResult>();
+
+export async function reverseGeocodeLocation(lat: number, lng: number): Promise<GeocodeResult> {
+  const cacheKey = `${lat.toFixed(3)},${lng.toFixed(3)}`;
+  if (GEOCODE_CACHE.has(cacheKey)) {
+    return GEOCODE_CACHE.get(cacheKey)!;
+  }
+
+  // Quick bounding box check for Pune District
+  const isPuneDistrict = lat >= 18.25 && lat <= 18.75 && lng >= 73.65 && lng <= 74.15;
+
+  try {
+    const res = await fetch(`/api/geocode?lat=${lat}&lng=${lng}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.formatted) {
+        GEOCODE_CACHE.set(cacheKey, data);
+        return data;
+      }
+    }
+  } catch {}
+
+  // Fallback to local geographic inference
+  const defaultResult: GeocodeResult = {
+    formatted: isPuneDistrict ? "Pune, Maharashtra" : "Maharashtra, India",
+    city: isPuneDistrict ? "Pune" : "Maharashtra",
+    state: "Maharashtra",
+    area: isPuneDistrict ? "Pune Urban Jurisdiction" : undefined,
+  };
+
+  GEOCODE_CACHE.set(cacheKey, defaultResult);
+  return defaultResult;
+}

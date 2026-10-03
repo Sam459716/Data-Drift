@@ -1,5 +1,7 @@
 {
-  "description": "Transforms user notes into fully formatted websites instantly, enabling easy online publishing without coding for individuals and businesses.",
+  "title": "Legal Metrology Digital Platform",
+  "description": "Smart India Hackathon 2026 digital verification and compliance monitoring platform for Legal Metrology instruments, field inspections, fraud detection, and certification.",
+  "language": "en",
   "robots": {
     "index": false
   },

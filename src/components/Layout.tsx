@@ -65,10 +65,11 @@ interface LayoutProps {
   onPageChange: (page: string) => void;
   onLangChange: (lang: Lang) => void;
   onLogout: () => void;
+  onOpenInstructions?: () => void;
   children: React.ReactNode;
 }
 
-export default function Layout({ role, lang, currentPage, onPageChange, onLangChange, onLogout, children }: LayoutProps) {
+export default function Layout({ role, lang, currentPage, onPageChange, onLangChange, onLogout, onOpenInstructions, children }: LayoutProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [showNotif, setShowNotif] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
@@ -88,8 +89,12 @@ export default function Layout({ role, lang, currentPage, onPageChange, onLangCh
   };
 
   const reopenInstructions = () => {
-    localStorage.removeItem("datadrift_instructions_dismissed");
-    setShowInstructions(true);
+    if (onOpenInstructions) {
+      onOpenInstructions();
+    } else {
+      localStorage.removeItem("datadrift_instructions_dismissed");
+      setShowInstructions(true);
+    }
     setShowProfile(false);
   };
 
@@ -198,6 +203,15 @@ export default function Layout({ role, lang, currentPage, onPageChange, onLangCh
             🔐 {t(lang, "certVerify")}
           </button>
 
+          {/* Instructions */}
+          <button
+            onClick={reopenInstructions}
+            className="text-xs px-3 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 font-semibold transition-all flex items-center gap-1.5"
+            title="View DataDrift Welcome & Instructions"
+          >
+            <span>🛡️</span> Instructions
+          </button>
+
           {/* Notifications */}
           <div className="relative">
             <button onClick={() => { setShowNotif(!showNotif); setShowProfile(false); }}
@@ -257,7 +271,7 @@ export default function Layout({ role, lang, currentPage, onPageChange, onLangCh
 
         {/* Content */}
         <div className="flex-1 overflow-auto p-6" style={{ background: "#f0f4f8" }}>
-          {showInstructions && <InstructionBox onDismiss={dismissInstructions} />}
+          {!onOpenInstructions && showInstructions && <InstructionBox onDismiss={dismissInstructions} />}
           {children}
         </div>
       </div>

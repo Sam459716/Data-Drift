@@ -20,14 +20,28 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from "react-leaflet";
 import L from "leaflet";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
-import { PUBLIC_SHOPS, TRANSPARENCY_STATS, PUBLIC_FAQS, type Shop, type ComplianceTier } from "../data/publicData";
+import { PUBLIC_SHOPS, TRANSPARENCY_STATS, PUBLIC_FAQS, haversineKm, type Shop, type ComplianceTier } from "../data/publicData";
 import {
   calcShopTier, tierMeta, queryNearby, searchShops, getShopById, avgRating,
   INSTRUMENT_STATUS_META, generateComplaintId,
   type ShopWithDistance, type SpatialQuery,
 } from "../services/complianceService";
-import { getCurrentLocation, formatAccuracy, type GeoPosition } from "../services/locationService";
+import { getCurrentLocation, formatAccuracy, reverseGeocodeLocation, type GeoPosition } from "../services/locationService";
 import { startListening, isSpeechSupported, type SpeechStatus } from "../services/speechToTextService";
+import {
+  fetchNearbyBusinesses,
+  getComplianceStatusMeta,
+  submitVoiceComplaint,
+  type RealBusiness,
+  type DataDriftComplianceStatus,
+} from "../services/placesService";
+import {
+  startVoiceRecording,
+  formatDuration,
+  isMediaRecorderSupported,
+  type RecordedAudio,
+  type VoiceRecorderSession,
+} from "../services/voiceRecorderService";
 import { CERTIFICATES } from "../data/mockData";
 
 // Fix Leaflet default marker icon paths broken by Vite's asset bundling
@@ -46,6 +60,22 @@ function makeShopIcon(hex: string) {
       <path d="M14 0C6.27 0 0 6.27 0 14c0 9.75 14 22 14 22s14-12.25 14-22C28 6.27 21.73 0 14 0z" fill="${hex}" stroke="white" stroke-width="2"/>
       <circle cx="14" cy="14" r="6" fill="white" opacity="0.9"/>
     </svg>`,
+    iconSize: [28, 36],
+    iconAnchor: [14, 36],
+    popupAnchor: [0, -36],
+  });
+}
+
+function makeBusinessMarkerIcon(status: DataDriftComplianceStatus) {
+  const meta = getComplianceStatusMeta(status);
+  return L.divIcon({
+    className: "",
+    html: `<div style="filter: drop-shadow(0 2px 4px rgba(0,0,0,0.25)); display: flex; align-items: center; justify-content: center;">
+      <svg width="28" height="36" viewBox="0 0 28 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M14 0C6.27 0 0 6.27 0 14c0 9.75 14 22 14 22s14-12.25 14-22C28 6.27 21.73 0 14 0z" fill="${meta.dot}" stroke="white" stroke-width="2"/>
+        <circle cx="14" cy="14" r="5" fill="white" opacity="0.95"/>
+      </svg>
+    </div>`,
     iconSize: [28, 36],
     iconAnchor: [14, 36],
     popupAnchor: [0, -36],
@@ -72,8 +102,8 @@ interface Props { onBack: () => void; }
 
 // ─── Shared primitives ────────────────────────────────────
 
-function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return <div className={`bg-white rounded-2xl border border-gray-200 shadow-sm ${className}`}>{children}</div>;
+function Card({ children, className = "", style }: { children: React.ReactNode; className?: string; style?: React.CSSProperties }) {
+  return <div className={`bg-white rounded-2xl border border-gray-200 shadow-sm ${className}`} style={style}>{children}</div>;
 }
 
 function TierBadge({ tier, size = "sm" }: { tier: ComplianceTier; size?: "sm" | "md" | "lg" }) {
@@ -283,57 +313,217 @@ function HomeSection({ onSection, onShopSelect }: { onSection: (s: string) => vo
   );
 }
 
+// ─── Real Business Card Component ────────────────────────
+function RealBusinessCard({
+  business,
+  onSelect,
+  onComplaint,
+}: {
+  business: RealBusiness;
+  onSelect: () => void;
+  onComplaint?: () => void;
+}) {
+  const meta = getComplianceStatusMeta(business.complianceStatus);
+  return (
+    <div
+      className={`w-full text-left p-4 rounded-2xl border-2 transition-all hover:shadow-md bg-white ${
+        business.complianceStatus === "Verified" || business.complianceStatus === "Certificate Valid"
+          ? "border-emerald-200"
+          : business.complianceStatus === "Data Not Found"
+          ? "border-gray-200"
+          : "border-amber-200"
+      }`}
+    >
+      <div className="flex items-start justify-between gap-3 mb-2">
+        <div className="flex items-start gap-3">
+          <div
+            className="w-10 h-10 rounded-xl flex items-center justify-center text-xl shrink-0"
+            style={{ background: meta.dot + "15" }}
+          >
+            {business.category === "Grocery"
+              ? "🛒"
+              : business.category === "Fuel Station"
+              ? "⛽"
+              : business.category === "Jewellery"
+              ? "💍"
+              : business.category === "Pharmacy"
+              ? "💊"
+              : business.category === "Supermarket"
+              ? "🏪"
+              : business.category === "Vegetable Market"
+              ? "🥦"
+              : business.category === "Dairy"
+              ? "🥛"
+              : "🏪"}
+          </div>
+          <div>
+            <div className="font-bold text-gray-900 text-sm leading-tight">{business.name}</div>
+            <div className="text-xs text-gray-500 mt-0.5">{business.address}</div>
+          </div>
+        </div>
+
+        {/* Feature 4: Separate DataDrift compliance badge */}
+        <span
+          className={`inline-flex items-center gap-1.5 rounded-full font-semibold border text-xs px-2.5 py-0.5 shrink-0 ${meta.bg} ${meta.text} ${meta.border}`}
+        >
+          <span className="w-2 h-2 rounded-full shrink-0" style={{ background: meta.dot }} />
+          {meta.label}
+        </span>
+      </div>
+
+      <div className="text-xs text-gray-500 mb-3 bg-gray-50/70 p-2 rounded-lg border border-gray-100">
+        {meta.description}
+      </div>
+
+      <div className="flex items-center justify-between flex-wrap gap-2 text-xs pt-1 border-t border-gray-100">
+        <div className="flex items-center gap-3 text-gray-500 flex-wrap">
+          <span className="text-blue-700 font-semibold">📍 {business.distanceKm < 1 ? `${Math.round(business.distanceKm * 1000)} m` : `${business.distanceKm.toFixed(1)} km`}</span>
+          {business.rating && <span className="flex items-center gap-1 text-amber-600">⭐ {business.rating}</span>}
+          {business.phone && <span className="text-gray-600">📞 {business.phone}</span>}
+          {business.website && (
+            <a
+              href={business.website}
+              target="_blank"
+              rel="noreferrer"
+              className="text-blue-600 hover:underline flex items-center gap-0.5"
+            >
+              🌐 Website
+            </a>
+          )}
+          {business.isOpen !== undefined && (
+            <span className={business.isOpen ? "text-emerald-700 font-medium" : "text-gray-400"}>
+              {business.isOpen ? "● Open now" : "○ Closed"}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {business.dataDriftRecord ? (
+            <button
+              onClick={onSelect}
+              className="px-3 py-1 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-xs font-medium transition-all"
+            >
+              View Record →
+            </button>
+          ) : (
+            <button
+              onClick={onComplaint}
+              className="px-3 py-1 bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 rounded-lg text-xs font-medium transition-all"
+            >
+              📣 Report / Verify
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Section 2: Nearby Discovery ─────────────────────────
 
-function NearbySection({ onShopSelect }: { onShopSelect: (id: string) => void }) {
+function NearbySection({
+  onShopSelect,
+  onComplaint,
+}: {
+  onShopSelect: (id: string) => void;
+  onComplaint?: (shopId?: string, businessName?: string, location?: string) => void;
+}) {
   const [locStatus, setLocStatus] = useState<"idle" | "requesting" | "granted" | "denied" | "unavailable">("idle");
   const [geoPos, setGeoPos] = useState<GeoPosition | null>(null);
-  const [radius, setRadius] = useState<1 | 2 | 5 | 10>(2);
-  const [category, setCategory] = useState<Shop["category"] | "">("");
-  const [tierFilter, setTierFilter] = useState<ComplianceTier[]>([]);
-  const [results, setResults] = useState<ShopWithDistance[]>([]);
-  const [searched, setSearched] = useState(false);
-  const [selectedShopOnMap, setSelectedShopOnMap] = useState<string | null>(null);
+  const [detectedCity, setDetectedCity] = useState<string>("Pune, Maharashtra");
+  const [radius, setRadius] = useState<1 | 2 | 5>(2);
+  const [category, setCategory] = useState<string>("");
+  const [businesses, setBusinesses] = useState<RealBusiness[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [selectedBusiness, setSelectedBusiness] = useState<RealBusiness | null>(null);
+  const [dataSource, setDataSource] = useState<string>("Live Places API");
 
+  // Fetch real Pune businesses from backend API
+  const loadBusinesses = useCallback(async (lat: number, lng: number, rad: number, cat?: string) => {
+    setLoading(true);
+    setApiError(null);
+    try {
+      const resp = await fetchNearbyBusinesses(lat, lng, rad, cat);
+      if (resp.error && (!resp.businesses || resp.businesses.length === 0)) {
+        setApiError(resp.error);
+        setBusinesses([]);
+      } else {
+        setBusinesses(resp.businesses);
+        if (resp.source === "google_places") {
+          setDataSource("Google Places API (New)");
+        } else {
+          setDataSource("Google Places API");
+        }
+      }
+    } catch {
+      setApiError("Nearby business data is temporarily unavailable. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Feature 1: Real Browser Geolocation
   const requestLocation = useCallback(async () => {
     setLocStatus("requesting");
+    setApiError(null);
     const result = await getCurrentLocation();
     if (result.position) {
       setGeoPos(result.position);
       setLocStatus("granted");
+      reverseGeocodeLocation(result.position.lat, result.position.lng).then((res) => {
+        if (res.formatted) setDetectedCity(res.formatted);
+      });
+      // Pass coordinates to backend /api/nearby-shops endpoint immediately
+      loadBusinesses(result.position.lat, result.position.lng, radius, category);
     } else if (result.error === "denied") {
       setLocStatus("denied");
     } else {
       setLocStatus("unavailable");
     }
-  }, []);
+  }, [radius, category, loadBusinesses]);
 
+  // Update business search when position, radius, or category changes
   useEffect(() => {
-    if (!geoPos) return;
-    const q: SpatialQuery = {
-      lat: geoPos.lat,
-      lng: geoPos.lng,
-      radiusKm: radius,
-      categories: category ? [category as Shop["category"]] : undefined,
-      tierFilter: tierFilter.length ? tierFilter : undefined,
-    };
-    setResults(queryNearby(q));
-    setSearched(true);
-  }, [geoPos, radius, category, tierFilter]);
+    if (geoPos) {
+      loadBusinesses(geoPos.lat, geoPos.lng, radius, category);
+    }
+  }, [geoPos, radius, category, loadBusinesses]);
 
-  const CATEGORIES: Shop["category"][] = ["Grocery", "Fuel Station", "Jewellery", "Pharmacy", "Supermarket", "Vegetable Market", "Dairy", "Hardware"];
+  const CATEGORIES = [
+    "Grocery",
+    "Supermarket",
+    "Fuel Station",
+    "Jewellery",
+    "Pharmacy",
+    "Vegetable Market",
+    "Dairy",
+    "Hardware",
+  ];
 
-  // Demo fallback: if location is denied/unavailable, show Pune-area data for demonstration
-  const useDemoLocation = () => {
-    setGeoPos({ lat: 18.5204, lng: 73.8567, accuracy: 0, timestamp: Date.now() });
+  // Pune default center fallback if location permission is not granted
+  const usePuneDefaultLocation = () => {
+    const puneCoords = { lat: 18.5204, lng: 73.8567, accuracy: 25, timestamp: Date.now() };
+    setGeoPos(puneCoords);
+    setDetectedCity("Pune, Maharashtra");
     setLocStatus("granted");
   };
 
   return (
     <div className="fade-in">
-      <div className="mb-6">
-        <h2 className="text-xl font-bold text-gray-900 mb-1" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Nearby Shop Discovery</h2>
-        <p className="text-sm text-gray-500">Find compliant shops and verified instruments close to you. No account needed.</p>
+      <div className="mb-6 flex items-start justify-between flex-wrap gap-2">
+        <div>
+          <h2 className="text-xl font-bold text-gray-900 mb-1" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+            Nearby Shop Discovery
+          </h2>
+          <p className="text-sm text-gray-500">
+            Discover real commercial businesses around your location with independent Legal Metrology status.
+          </p>
+        </div>
+        {geoPos && (
+          <div className="text-xs px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg border border-blue-200 font-medium">
+            Search Engine: {dataSource}
+          </div>
+        )}
       </div>
 
       {/* Location card */}
@@ -341,19 +531,31 @@ function NearbySection({ onShopSelect }: { onShopSelect: (id: string) => void })
         {locStatus === "idle" && (
           <div className="text-center py-4">
             <div className="text-4xl mb-3">📍</div>
-            <div className="font-semibold text-gray-800 mb-1">Find verified shops near you</div>
-            <div className="text-sm text-gray-500 mb-4">Your location is used only for this search — it is never stored or shared with vendors.</div>
-            <button onClick={requestLocation}
-              className="px-6 py-3 bg-blue-700 text-white rounded-xl font-semibold text-sm hover:bg-blue-800 transition-all shadow-md">
-              📍 Use My Location
-            </button>
+            <div className="font-semibold text-gray-800 mb-1">Find real businesses near you in Pune</div>
+            <div className="text-sm text-gray-500 mb-4">
+              Your location is used only for this search — it is never stored or shared with vendors.
+            </div>
+            <div className="flex gap-2 justify-center flex-wrap">
+              <button
+                onClick={requestLocation}
+                className="px-6 py-3 bg-blue-700 text-white rounded-xl font-semibold text-sm hover:bg-blue-800 transition-all shadow-md active:scale-95 flex items-center gap-2"
+              >
+                <span>📍</span> Find Nearby Shops (Detect Location)
+              </button>
+              <button
+                onClick={usePuneDefaultLocation}
+                className="px-5 py-3 border border-gray-300 bg-white text-gray-700 rounded-xl font-semibold text-sm hover:bg-gray-50 transition-all"
+              >
+                🗺️ Search Pune Central
+              </button>
+            </div>
           </div>
         )}
 
         {locStatus === "requesting" && (
           <div className="text-center py-4 text-gray-500">
             <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-            Detecting your location…
+            Requesting browser location permission & detecting GPS…
           </div>
         )}
 
@@ -361,73 +563,105 @@ function NearbySection({ onShopSelect }: { onShopSelect: (id: string) => void })
           <div className="space-y-3">
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-700">
               <div className="font-semibold mb-1">
-                {locStatus === "denied" ? "⚠️ Location access is unavailable." : "⚠️ Location could not be detected."}
+                {locStatus === "denied" ? "⚠️ Browser Location Access Denied" : "⚠️ Location Signal Unavailable"}
               </div>
-              <div>You can <button onClick={requestLocation} className="underline font-medium">try again</button>, or use the demo data below.</div>
+              <div>
+                Location permission was not granted by your browser. You can{" "}
+                <button onClick={requestLocation} className="underline font-bold">
+                  try again
+                </button>
+                , or view real businesses around Pune Central below.
+              </div>
             </div>
-            <button onClick={useDemoLocation}
-              className="w-full px-4 py-2.5 border border-blue-200 bg-blue-50 text-blue-700 rounded-xl text-sm font-medium hover:bg-blue-100 transition-all">
-              🗺️ View Demo — Pune Area Shops
+            <button
+              onClick={usePuneDefaultLocation}
+              className="w-full px-4 py-2.5 border border-blue-200 bg-blue-50 text-blue-700 rounded-xl text-sm font-semibold hover:bg-blue-100 transition-all"
+            >
+              🗺️ Search Pune Central Area (18.5204°N, 73.8567°E)
             </button>
           </div>
         )}
 
         {locStatus === "granted" && geoPos && (
           <div>
-            <div className="flex items-center gap-3 mb-4 text-sm">
-              <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-green-700 shrink-0">✓</div>
+            <div className="flex items-center gap-3 mb-4 text-sm flex-wrap">
+              <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 shrink-0 font-bold">
+                ✓
+              </div>
               <div>
-                <div className="font-semibold text-gray-800">Location detected</div>
-                <div className="text-xs text-gray-500 font-mono">
+                <div className="font-semibold text-gray-800 flex items-center gap-2 flex-wrap">
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-xs">
+                    <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse"></span>
+                    📍 Location Detected
+                  </span>
+                  <span className="text-xs font-semibold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-full border border-blue-200">
+                    {detectedCity}
+                  </span>
+                </div>
+                <div className="text-xs text-gray-500 font-mono mt-0.5">
                   {geoPos.lat.toFixed(5)}°N, {geoPos.lng.toFixed(5)}°E
-                  {geoPos.accuracy > 0 && <span className="ml-2 text-amber-600">{formatAccuracy(geoPos.accuracy)}{geoPos.accuracy > 200 && " · Your location may be approximate."}</span>}
+                  {geoPos.accuracy > 0 && (
+                    <span className="ml-2 text-gray-600">({formatAccuracy(geoPos.accuracy)})</span>
+                  )}
                 </div>
               </div>
-              <button onClick={requestLocation} className="ml-auto text-xs text-blue-600 hover:underline shrink-0">↺ Update</button>
+              <button
+                onClick={requestLocation}
+                className="ml-auto text-xs text-blue-600 hover:underline shrink-0 font-medium"
+              >
+                ↺ Update Location
+              </button>
             </div>
 
-            {/* Filters */}
-            <div className="flex flex-wrap gap-3 items-center">
+            {/* Feature 2: Radius Selector (1 km, 2 km, 5 km) & Category */}
+            <div className="flex flex-wrap gap-4 items-center pt-3 border-t border-gray-100">
               <div className="flex items-center gap-2">
-                <span className="text-xs font-medium text-gray-600">Radius:</span>
+                <span className="text-xs font-medium text-gray-600">Search Radius:</span>
                 <div className="flex gap-1">
-                  {([1, 2, 5, 10] as const).map(r => (
-                    <button key={r} onClick={() => setRadius(r)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${radius === r ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+                  {([1, 2, 5] as const).map((r) => (
+                    <button
+                      key={r}
+                      onClick={() => setRadius(r)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                        radius === r ? "bg-blue-600 text-white shadow-sm" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                      }`}
+                    >
                       {r} km
                     </button>
                   ))}
                 </div>
               </div>
+
               <div className="flex items-center gap-2">
-                <span className="text-xs font-medium text-gray-600">Type:</span>
-                <select value={category} onChange={e => setCategory(e.target.value as any)}
-                  className="text-xs px-2 py-1.5 border border-gray-200 rounded-lg outline-none focus:border-blue-400 text-gray-700">
-                  <option value="">All types</option>
-                  {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                <span className="text-xs font-medium text-gray-600">Category:</span>
+                <select
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  className="text-xs px-2.5 py-1.5 border border-gray-200 rounded-lg outline-none focus:border-blue-400 text-gray-700 bg-white"
+                >
+                  <option value="">All Categories</option>
+                  {CATEGORIES.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
                 </select>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-medium text-gray-600">Status:</span>
-                {(["GREEN", "YELLOW", "RED"] as ComplianceTier[]).map(t => {
-                  const m = tierMeta(t);
-                  const active = tierFilter.includes(t);
-                  return (
-                    <button key={t} onClick={() => setTierFilter(prev => active ? prev.filter(x => x !== t) : [...prev, t])}
-                      className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${active ? `${m.bgClass} ${m.textClass} ${m.borderClass}` : "bg-gray-50 text-gray-500 border-gray-200"}`}>
-                      {m.shortLabel}
-                    </button>
-                  );
-                })}
-              </div>
+
+              {loading && (
+                <div className="flex items-center gap-2 text-xs text-blue-600 ml-auto">
+                  <div className="w-3.5 h-3.5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                  <span>Scanning nearby establishments…</span>
+                </div>
+              )}
             </div>
           </div>
         )}
       </Card>
 
-      {/* Real Leaflet Map */}
+      {/* Feature 3: Real Interactive Leaflet Map */}
       {locStatus === "granted" && geoPos && (
-        <div className="mb-5 rounded-2xl overflow-hidden border border-gray-200 shadow-sm" style={{ height: 340 }}>
+        <div className="mb-5 rounded-2xl overflow-hidden border border-gray-200 shadow-sm relative" style={{ height: 360 }}>
           <MapContainer
             center={[geoPos.lat, geoPos.lng]}
             zoom={14}
@@ -440,45 +674,109 @@ function NearbySection({ onShopSelect }: { onShopSelect: (id: string) => void })
             />
             <MapFly lat={geoPos.lat} lng={geoPos.lng} />
 
-            {/* User location marker */}
+            {/* Current user location marker */}
             <Marker position={[geoPos.lat, geoPos.lng]} icon={makeUserIcon()}>
               <Popup>
-                <div className="text-center font-semibold text-blue-700">📍 You are here</div>
-                {geoPos.accuracy > 0 && <div className="text-xs text-gray-500 text-center">{formatAccuracy(geoPos.accuracy)}</div>}
+                <div className="text-center">
+                  <div className="font-bold text-blue-700 text-sm">📍 Your Location</div>
+                  <div className="text-xs text-gray-600 mt-1">{detectedCity}</div>
+                  {geoPos.accuracy > 0 && (
+                    <div className="text-[10px] text-gray-400 mt-0.5">{formatAccuracy(geoPos.accuracy)}</div>
+                  )}
+                </div>
               </Popup>
             </Marker>
 
-            {/* Radius circle */}
+            {/* Selected Radius Circle */}
             <Circle
               center={[geoPos.lat, geoPos.lng]}
               radius={radius * 1000}
-              pathOptions={{ color: "#3b82f6", fillColor: "#3b82f6", fillOpacity: 0.05, weight: 1.5, dashArray: "6 4" }}
+              pathOptions={{
+                color: "#2563eb",
+                fillColor: "#3b82f6",
+                fillOpacity: 0.06,
+                weight: 1.5,
+                dashArray: "6 4",
+              }}
             />
 
-            {/* Shop markers */}
-            {results.map(shop => {
-              const meta = tierMeta(shop.tier);
+            {/* Real Business Markers with Independent Compliance Badging */}
+            {businesses.map((biz) => {
+              const meta = getComplianceStatusMeta(biz.complianceStatus);
               return (
                 <Marker
-                  key={shop.id}
-                  position={[shop.lat, shop.lng]}
-                  icon={makeShopIcon(meta.hex)}
-                  eventHandlers={{ click: () => setSelectedShopOnMap(shop.id) }}
+                  key={biz.id}
+                  position={[biz.lat, biz.lng]}
+                  icon={makeBusinessMarkerIcon(biz.complianceStatus)}
+                  eventHandlers={{ click: () => setSelectedBusiness(biz) }}
                 >
                   <Popup>
-                    <div style={{ minWidth: 180 }}>
-                      <div className="font-bold text-gray-800 text-sm mb-1">{shop.name}</div>
-                      <div className="text-xs text-gray-500 mb-2">{shop.address}</div>
-                      <div className="flex items-center gap-1.5 mb-1">
-                        <span className="w-2 h-2 rounded-full" style={{ background: meta.hex }} />
-                        <span className="text-xs font-semibold" style={{ color: meta.hex }}>{meta.label}</span>
+                    <div style={{ minWidth: 200, maxWidth: 260 }}>
+                      <div className="font-bold text-gray-900 text-sm leading-tight mb-1">{biz.name}</div>
+                      <div className="text-xs text-gray-500 mb-2 leading-tight">{biz.address}</div>
+
+                      {/* Separate DataDrift compliance badge */}
+                      <div className="mb-2">
+                        <span
+                          className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full font-semibold border ${meta.bg} ${meta.text} ${meta.border}`}
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full" style={{ background: meta.dot }} />
+                          {meta.label}
+                        </span>
                       </div>
-                      <div className="text-xs text-gray-500 mb-2">{shop.distanceKm < 1 ? `${Math.round(shop.distanceKm * 1000)} m away` : `${shop.distanceKm.toFixed(1)} km away`}</div>
-                      <button
-                        onClick={() => onShopSelect(shop.id)}
-                        style={{ background: "#1e40af", color: "white", border: "none", borderRadius: 8, padding: "4px 12px", fontSize: 11, cursor: "pointer", width: "100%" }}>
-                        View Shop →
-                      </button>
+
+                      <div className="text-[11px] text-gray-600 mb-2">
+                        {biz.complianceStatus === "Data Not Found"
+                          ? "No active DataDrift Legal Metrology file on record. Does not imply non-compliance or fraud."
+                          : "Government-registered instruments on file with Legal Metrology Department."}
+                      </div>
+
+                      <div className="flex items-center justify-between text-xs text-gray-500 mb-3 pt-1 border-t border-gray-100 flex-wrap gap-1">
+                        <span>📍 {biz.distanceKm < 1 ? `${Math.round(biz.distanceKm * 1000)} m` : `${biz.distanceKm.toFixed(1)} km`}</span>
+                        {biz.rating && <span>⭐ {biz.rating}</span>}
+                        {biz.phone && <span>📞 {biz.phone}</span>}
+                        {biz.website && (
+                          <a href={biz.website} target="_blank" rel="noreferrer" className="text-blue-600 underline">
+                            🌐 Web
+                          </a>
+                        )}
+                      </div>
+
+                      {biz.dataDriftRecord ? (
+                        <button
+                          onClick={() => onShopSelect(biz.dataDriftRecord!.id)}
+                          style={{
+                            background: "#1e40af",
+                            color: "white",
+                            border: "none",
+                            borderRadius: 6,
+                            padding: "6px 12px",
+                            fontSize: 11,
+                            cursor: "pointer",
+                            width: "100%",
+                            fontWeight: 600,
+                          }}
+                        >
+                          View Official DataDrift File →
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => onComplaint?.(undefined, biz.name, biz.address)}
+                          style={{
+                            background: "#ea580c",
+                            color: "white",
+                            border: "none",
+                            borderRadius: 6,
+                            padding: "6px 12px",
+                            fontSize: 11,
+                            cursor: "pointer",
+                            width: "100%",
+                            fontWeight: 600,
+                          }}
+                        >
+                          📣 Report Scale / File Complaint
+                        </button>
+                      )}
                     </div>
                   </Popup>
                 </Marker>
@@ -488,36 +786,101 @@ function NearbySection({ onShopSelect }: { onShopSelect: (id: string) => void })
         </div>
       )}
 
-      {/* Map legend */}
+      {/* Map Legend */}
       {locStatus === "granted" && (
-        <div className="flex items-center gap-4 mb-5 px-1 flex-wrap">
-          <div className="flex items-center gap-1.5 text-xs text-blue-600">
+        <div className="flex items-center gap-4 mb-5 px-1 flex-wrap text-xs text-gray-600">
+          <div className="flex items-center gap-1.5">
             <div className="w-3 h-3 rounded-full bg-blue-500 border-2 border-white shadow" />
-            <span>You</span>
+            <span className="font-medium text-blue-700">You</span>
           </div>
-          {(["GREEN", "YELLOW", "RED"] as ComplianceTier[]).map(t => {
-            const m = tierMeta(t);
-            return <span key={t} className="flex items-center gap-1.5 text-xs text-gray-600"><span className="w-3 h-3 rounded-full" style={{ background: m.hex }} />{m.label}</span>;
-          })}
+          <div className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded-full bg-emerald-500" />
+            <span>Certificate Valid (DataDrift Record)</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded-full bg-amber-500" />
+            <span>Attention / Pending Verification</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded-full bg-slate-400" />
+            <span>Data Not Found (Unchecked Registry)</span>
+          </div>
         </div>
       )}
 
-      {/* Results list */}
-      {searched && (
+      {/* Feature 8: Error / Fallback handling */}
+      {apiError && (
+        <div className="mb-5 bg-amber-50 border border-amber-200 rounded-2xl p-5 text-sm text-amber-800">
+          <div className="font-bold flex items-center gap-2 mb-1">
+            <span>⚠️</span> {apiError}
+          </div>
+          <p className="text-xs text-amber-700 mb-3">
+            Real commercial establishment discovery uses Google Places API (New). Make sure the <code className="bg-amber-100 px-1 py-0.5 rounded font-mono font-bold">GOOGLE_MAPS_API_KEY</code> environment variable is set with Places API (New) enabled.
+          </p>
+          <div className="flex gap-2 flex-wrap">
+            <button
+              onClick={() => geoPos && loadBusinesses(geoPos.lat, geoPos.lng, radius, category)}
+              className="px-4 py-2 bg-amber-600 text-white rounded-lg text-xs font-semibold hover:bg-amber-700 transition-all"
+            >
+              🔄 Retry Google Places
+            </button>
+            <button
+              onClick={() => {
+                setApiError(null);
+                setBusinesses(
+                  PUBLIC_SHOPS.map((s) => ({
+                    id: s.id,
+                    placeId: s.id,
+                    name: s.name,
+                    address: s.address,
+                    lat: s.lat,
+                    lng: s.lng,
+                    distanceKm: geoPos ? haversineKm(geoPos.lat, geoPos.lng, s.lat, s.lng) : 0,
+                    category: s.category,
+                    complianceStatus: s.instruments.some((i) => i.status === "EXPIRED")
+                      ? "Certificate Expired"
+                      : "Certificate Valid",
+                    dataDriftRecord: s,
+                  }))
+                );
+              }}
+              className="px-4 py-2 border border-amber-300 bg-white text-amber-800 rounded-lg text-xs font-semibold hover:bg-amber-100 transition-all"
+            >
+              📋 Load Registered Directory
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Real Business Results List */}
+      {locStatus === "granted" && !loading && !apiError && (
         <div className="fade-in">
-          {results.length === 0 ? (
+          {businesses.length === 0 ? (
             <Card className="p-8 text-center text-gray-400">
               <div className="text-3xl mb-2">🔍</div>
-              <div className="font-semibold text-gray-600">No registered DataDrift vendors found within {radius} km</div>
-              <div className="text-sm mt-1">Try increasing the search radius or removing filters. Only businesses registered with DataDrift are shown.</div>
+              <div className="font-semibold text-gray-600">No establishments found within {radius} km</div>
+              <div className="text-sm mt-1">Try expanding the search radius to 5 km or selecting a different category.</div>
             </Card>
           ) : (
             <div>
-              <div className="text-sm text-gray-500 mb-3">
-                <strong className="text-gray-800">{results.length} DataDrift-registered shop{results.length !== 1 ? "s" : ""}</strong> within {radius} km · sorted by distance
+              <div className="text-sm text-gray-500 mb-3 flex items-center justify-between">
+                <div>
+                  <strong className="text-gray-800">{businesses.length} real establishment{businesses.length !== 1 ? "s" : ""}</strong>{" "}
+                  found within {radius} km · sorted by distance
+                </div>
+                <div className="text-xs text-gray-400">
+                  DataDrift Verified & Unverified Listings
+                </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {results.map(s => <ShopCard key={s.id} shop={s} onSelect={() => onShopSelect(s.id)} />)}
+                {businesses.map((biz) => (
+                  <RealBusinessCard
+                    key={biz.id}
+                    business={biz}
+                    onSelect={() => biz.dataDriftRecord && onShopSelect(biz.dataDriftRecord.id)}
+                    onComplaint={() => onComplaint?.(biz.dataDriftRecord?.id, biz.name, biz.address)}
+                  />
+                ))}
               </div>
             </div>
           )}
@@ -765,13 +1128,23 @@ function ShopDetailSection({ shopId, onComplaint, onSection }: { shopId: string;
 
 // ─── Section 4: Complaint Filing ─────────────────────────
 
-function ComplaintSection({ prefilledShopId, onTrack }: { prefilledShopId?: string; onTrack: () => void }) {
+function ComplaintSection({
+  prefilledShopId,
+  prefilledBusinessName,
+  prefilledLocation,
+  onTrack,
+}: {
+  prefilledShopId?: string;
+  prefilledBusinessName?: string;
+  prefilledLocation?: string;
+  onTrack: () => void;
+}) {
   const [form, setForm] = useState({
     shopId: prefilledShopId ?? "",
     category: "",
     description: "",
-    shopName: "",
-    location: "",
+    shopName: prefilledBusinessName ?? "",
+    location: prefilledLocation ?? "",
     date: new Date().toISOString().split("T")[0],
     anonymous: true,
     name: "",
@@ -781,36 +1154,166 @@ function ComplaintSection({ prefilledShopId, onTrack }: { prefilledShopId?: stri
   const [submitted, setSubmitted] = useState(false);
   const [complaintId, setComplaintId] = useState("");
 
-  const shop = form.shopId ? PUBLIC_SHOPS.find(s => s.id === form.shopId) : null;
+  // Feature 5: Real Microphone Access & Voice Complaint State
+  const [voiceState, setVoiceState] = useState<"idle" | "recording" | "recorded">("idle");
+  const [voiceSession, setVoiceSession] = useState<VoiceRecorderSession | null>(null);
+  const [voiceSeconds, setVoiceSeconds] = useState(0);
+  const [recordedAudio, setRecordedAudio] = useState<RecordedAudio | null>(null);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [transcribing, setTranscribing] = useState(false);
 
-  const handleSubmit = () => {
-    setComplaintId(generateComplaintId());
+  useEffect(() => {
+    if (prefilledShopId) setForm((prev) => ({ ...prev, shopId: prefilledShopId }));
+    if (prefilledBusinessName) setForm((prev) => ({ ...prev, shopName: prefilledBusinessName }));
+    if (prefilledLocation) setForm((prev) => ({ ...prev, location: prefilledLocation }));
+  }, [prefilledShopId, prefilledBusinessName, prefilledLocation]);
+
+  const shop = form.shopId ? PUBLIC_SHOPS.find((s) => s.id === form.shopId) : null;
+
+  const handleStartVoiceRecording = async () => {
+    setVoiceError(null);
+    setVoiceSeconds(0);
+    const result = await startVoiceRecording((seconds) => setVoiceSeconds(seconds));
+    if (result.error || !result.session) {
+      setVoiceError(result.message || "Failed to start microphone recording.");
+      return;
+    }
+    setVoiceSession(result.session);
+    setVoiceState("recording");
+  };
+
+  const handleStopVoiceRecording = async () => {
+    if (!voiceSession) return;
+    try {
+      const audio = await voiceSession.stop();
+      setRecordedAudio(audio);
+      setVoiceState("recorded");
+      setVoiceSession(null);
+      if (!form.description) {
+        setForm((prev) => ({
+          ...prev,
+          description: `[Voice Complaint Recorded: ${formatDuration(audio.durationSeconds)} duration]`,
+        }));
+      }
+    } catch {
+      setVoiceError("Could not finalize audio recording. Please try again.");
+      setVoiceState("idle");
+      setVoiceSession(null);
+    }
+  };
+
+  const handleDeleteVoiceRecording = () => {
+    if (recordedAudio?.url) {
+      URL.revokeObjectURL(recordedAudio.url);
+    }
+    setRecordedAudio(null);
+    setVoiceState("idle");
+    setVoiceSeconds(0);
+  };
+
+  const handleTranscribeSpeech = () => {
+    if (!isSpeechSupported()) {
+      setVoiceError("Speech-to-text recognition is not supported in this browser.");
+      return;
+    }
+    setTranscribing(true);
+    setVoiceError(null);
+    startListening({
+      lang: "en-IN",
+      onInterim: (txt) => {
+        setForm((prev) => ({
+          ...prev,
+          description: prev.description ? `${prev.description} ${txt}` : txt,
+        }));
+      },
+      onFinal: (txt) => {
+        setForm((prev) => ({
+          ...prev,
+          description: prev.description ? `${prev.description} ${txt}` : txt,
+        }));
+      },
+      onStatusChange: (status) => {
+        if (status === "done" || status === "idle" || status === "error") {
+          setTranscribing(false);
+        }
+      },
+      onError: (msg) => {
+        setVoiceError(msg);
+        setTranscribing(false);
+      },
+    });
+  };
+
+  const handleSubmit = async () => {
+    const cid = generateComplaintId();
+    setComplaintId(cid);
+
+    // Feature 7: Submit to backend voice complaint endpoint
+    await submitVoiceComplaint({
+      complaintId: cid,
+      shopId: form.shopId,
+      shopName: form.shopName || shop?.name,
+      category: form.category,
+      description: form.description,
+      location: form.location,
+      anonymous: form.anonymous,
+      name: form.name,
+      phone: form.phone,
+      audioBlob: recordedAudio?.blob,
+      durationSeconds: recordedAudio?.durationSeconds,
+    });
+
     setSubmitted(true);
   };
 
-  if (submitted) return (
-    <div className="fade-in">
-      <Card className="p-10 text-center max-w-lg mx-auto">
-        <div className="text-5xl mb-4">✅</div>
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">Complaint Submitted</h2>
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 my-4">
-          <div className="text-xs text-gray-500 mb-1">Your Complaint ID</div>
-          <div className="text-xl font-black text-blue-700 font-mono">{complaintId}</div>
-        </div>
-        <p className="text-gray-500 text-sm mb-4">An officer will be assigned within 48 hours. Track your complaint below — no login required.</p>
-        <div className="flex gap-3 justify-center">
-          <button onClick={onTrack} className="px-5 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-all">Track Complaint →</button>
-          <button onClick={() => setSubmitted(false)} className="px-5 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50 transition-all">File Another</button>
-        </div>
-      </Card>
-    </div>
-  );
+  if (submitted)
+    return (
+      <div className="fade-in">
+        <Card className="p-10 text-center max-w-lg mx-auto">
+          <div className="text-5xl mb-4">✅</div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Complaint Submitted</h2>
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 my-4">
+            <div className="text-xs text-gray-500 mb-1">Your Complaint ID</div>
+            <div className="text-xl font-black text-blue-700 font-mono">{complaintId}</div>
+          </div>
+          {recordedAudio && (
+            <div className="flex items-center justify-center gap-2 text-xs text-green-700 bg-green-50 p-2.5 rounded-xl border border-green-200 mb-4 font-medium">
+              <span>🎙️</span> Voice recording attached ({formatDuration(recordedAudio.durationSeconds)}) and stored for investigation.
+            </div>
+          )}
+          <p className="text-gray-500 text-sm mb-4">
+            An officer will be assigned within 48 hours. Track your complaint below — no login required.
+          </p>
+          <div className="flex gap-3 justify-center">
+            <button
+              onClick={onTrack}
+              className="px-5 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition-all"
+            >
+              Track Complaint →
+            </button>
+            <button
+              onClick={() => {
+                setSubmitted(false);
+                handleDeleteVoiceRecording();
+              }}
+              className="px-5 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50 transition-all"
+            >
+              File Another
+            </button>
+          </div>
+        </Card>
+      </div>
+    );
 
   return (
     <div className="fade-in">
       <div className="mb-6">
-        <h2 className="text-xl font-bold text-gray-900 mb-1" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>File a Complaint</h2>
-        <p className="text-sm text-gray-500">Report inaccurate scales, expired certificates, or tampered instruments. You can file anonymously — your identity is protected.</p>
+        <h2 className="text-xl font-bold text-gray-900 mb-1" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+          File a Complaint
+        </h2>
+        <p className="text-sm text-gray-500">
+          Report inaccurate scales, expired certificates, or tampered instruments. You can file anonymously or attach a voice recording.
+        </p>
       </div>
 
       <Card className="p-6 max-w-2xl">
@@ -818,55 +1321,190 @@ function ComplaintSection({ prefilledShopId, onTrack }: { prefilledShopId?: stri
           {/* Shop picker */}
           <div>
             <label className="block text-xs font-semibold text-gray-700 mb-1">Shop / Establishment *</label>
-            <select value={form.shopId} onChange={e => setForm({ ...form, shopId: e.target.value })}
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm outline-none focus:border-blue-400">
+            <select
+              value={form.shopId}
+              onChange={(e) => setForm({ ...form, shopId: e.target.value })}
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm outline-none focus:border-blue-400"
+            >
               <option value="">Select a listed shop or enter manually below</option>
-              {PUBLIC_SHOPS.map(s => <option key={s.id} value={s.id}>{s.name} — {s.area}, {s.district}</option>)}
+              {PUBLIC_SHOPS.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name} — {s.area}, {s.district}
+                </option>
+              ))}
             </select>
             {!form.shopId && (
-              <input value={form.shopName} onChange={e => setForm({ ...form, shopName: e.target.value })}
-                placeholder="Or type shop name if not listed"
-                className="mt-2 w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm outline-none focus:border-blue-400" />
+              <input
+                value={form.shopName}
+                onChange={(e) => setForm({ ...form, shopName: e.target.value })}
+                placeholder="Or type business name if not in directory"
+                className="mt-2 w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm outline-none focus:border-blue-400"
+              />
             )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-gray-700 mb-1">Complaint Category *</label>
-              <select value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm outline-none focus:border-blue-400 text-gray-700">
+              <select
+                value={form.category}
+                onChange={(e) => setForm({ ...form, category: e.target.value })}
+                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm outline-none focus:border-blue-400 text-gray-700"
+              >
                 <option value="">Select category</option>
-                {["Inaccurate Weighing", "Expired Certificate", "Tampered Seal", "Missing Certificate", "Unregistered Instrument", "Incorrect Price by Volume (Fuel)", "Refused to Show Certificate", "Other"].map(c => <option key={c}>{c}</option>)}
+                {[
+                  "Inaccurate Weighing",
+                  "Expired Certificate",
+                  "Tampered Seal",
+                  "Missing Certificate",
+                  "Unregistered Instrument",
+                  "Incorrect Price by Volume (Fuel)",
+                  "Refused to Show Certificate",
+                  "Other",
+                ].map((c) => (
+                  <option key={c}>{c}</option>
+                ))}
               </select>
             </div>
             <div>
               <label className="block text-xs font-semibold text-gray-700 mb-1">Date of Incident *</label>
-              <input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })}
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm outline-none focus:border-blue-400" />
+              <input
+                type="date"
+                value={form.date}
+                onChange={(e) => setForm({ ...form, date: e.target.value })}
+                className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm outline-none focus:border-blue-400"
+              />
             </div>
           </div>
 
           <div>
             <label className="block text-xs font-semibold text-gray-700 mb-1">Location (Area / Address)</label>
-            <input value={form.location} onChange={e => setForm({ ...form, location: e.target.value })}
-              placeholder={shop ? shop.address : "Enter location if different from above"}
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm outline-none focus:border-blue-400" />
+            <input
+              value={form.location}
+              onChange={(e) => setForm({ ...form, location: e.target.value })}
+              placeholder={shop ? shop.address : "Enter location / street address"}
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm outline-none focus:border-blue-400"
+            />
           </div>
 
           <div>
             <label className="block text-xs font-semibold text-gray-700 mb-1">Description *</label>
-            <textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} rows={4}
+            <textarea
+              value={form.description}
+              onChange={(e) => setForm({ ...form, description: e.target.value })}
+              rows={4}
               placeholder="Describe what happened. E.g. 'Paid for 1 kg but scale showed 1.15 kg. Certificate sticker was peeling off and showed 2024 date.'"
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm outline-none focus:border-blue-400 leading-relaxed" />
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm outline-none focus:border-blue-400 leading-relaxed"
+            />
+          </div>
+
+          {/* Feature 5: Real Microphone Access & Voice Complaint */}
+          <div className="bg-gradient-to-r from-orange-50/80 to-amber-50/80 rounded-xl p-4 border border-orange-200">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">🎤</span>
+                <div>
+                  <div className="text-xs font-bold text-gray-800">Record Voice Complaint</div>
+                  <div className="text-[11px] text-gray-500">Record details verbally using your device microphone.</div>
+                </div>
+              </div>
+              {voiceState === "idle" && (
+                <button
+                  type="button"
+                  onClick={handleStartVoiceRecording}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-xs font-semibold shadow-sm transition-all active:scale-95 cursor-pointer"
+                >
+                  <span>🎙️</span> Start Recording
+                </button>
+              )}
+            </div>
+
+            {/* Active recording state */}
+            {voiceState === "recording" && (
+              <div className="flex items-center justify-between bg-white rounded-lg p-3 border border-orange-300 shadow-inner">
+                <div className="flex items-center gap-3">
+                  <span className="relative flex h-3 w-3">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-red-600"></span>
+                  </span>
+                  <span className="text-xs font-bold text-red-600 font-mono">
+                    Recording audio: {formatDuration(voiceSeconds)}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleStopVoiceRecording}
+                  className="px-3.5 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold transition-all shadow-sm cursor-pointer"
+                >
+                  ⏹️ Stop Recording
+                </button>
+              </div>
+            )}
+
+            {/* Recorded audio review & playback */}
+            {voiceState === "recorded" && recordedAudio && (
+              <div className="space-y-2 bg-white rounded-lg p-3 border border-green-200">
+                <div className="flex items-center justify-between text-xs text-green-800 font-semibold">
+                  <span className="flex items-center gap-1.5">
+                    <span>✅</span> Voice Audio Attached ({formatDuration(recordedAudio.durationSeconds)} · {(recordedAudio.sizeBytes / 1024).toFixed(1)} KB)
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleDeleteVoiceRecording}
+                    className="text-red-600 hover:underline text-[11px] font-medium"
+                  >
+                    🗑️ Delete / Re-record
+                  </button>
+                </div>
+
+                {/* Browser audio playback controls */}
+                <audio controls src={recordedAudio.url} className="w-full h-9" />
+
+                {/* Feature 6: Speech-to-Text transcription */}
+                {isSpeechSupported() && (
+                  <button
+                    type="button"
+                    onClick={handleTranscribeSpeech}
+                    disabled={transcribing}
+                    className="w-full py-1.5 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 rounded-lg text-xs font-medium transition-all flex items-center justify-center gap-1.5"
+                  >
+                    {transcribing ? (
+                      <>
+                        <div className="w-3 h-3 border-2 border-blue-700 border-t-transparent rounded-full animate-spin" />
+                        <span>Transcribing live speech…</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>📝</span>
+                        <span>Transcribe Speech to Description (Web Speech API)</span>
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {voiceError && (
+              <div className="mt-2 text-xs text-red-700 bg-red-50 p-2.5 rounded-lg border border-red-200">
+                ⚠️ {voiceError}
+              </div>
+            )}
           </div>
 
           <div>
             <label className="block text-xs font-semibold text-gray-700 mb-1">Evidence (optional)</label>
-            <div className="border-2 border-dashed border-gray-200 rounded-xl p-4 text-center hover:border-blue-300 transition-colors cursor-pointer" onClick={() => setForm({ ...form, evidence: true })}>
+            <div
+              className="border-2 border-dashed border-gray-200 rounded-xl p-4 text-center hover:border-blue-300 transition-colors cursor-pointer"
+              onClick={() => setForm({ ...form, evidence: true })}
+            >
               {form.evidence ? (
                 <div className="text-green-600 text-sm font-medium">✅ File attached</div>
               ) : (
-                <div className="text-gray-400 text-sm">📷 Tap to upload photo or document<br /><span className="text-xs">JPG, PNG, PDF — max 10 MB</span></div>
+                <div className="text-gray-400 text-sm">
+                  📷 Tap to upload photo or document
+                  <br />
+                  <span className="text-xs">JPG, PNG, PDF — max 10 MB</span>
+                </div>
               )}
             </div>
           </div>
@@ -875,7 +1513,12 @@ function ComplaintSection({ prefilledShopId, onTrack }: { prefilledShopId?: stri
           <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
             <label className="flex items-center gap-3 cursor-pointer">
               <div className="relative">
-                <input type="checkbox" checked={form.anonymous} onChange={e => setForm({ ...form, anonymous: e.target.checked })} className="sr-only peer" />
+                <input
+                  type="checkbox"
+                  checked={form.anonymous}
+                  onChange={(e) => setForm({ ...form, anonymous: e.target.checked })}
+                  className="sr-only peer"
+                />
                 <div className="w-10 h-5 bg-gray-200 rounded-full peer peer-checked:bg-blue-600 transition-colors" />
                 <div className="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full transition-transform peer-checked:translate-x-5 shadow" />
               </div>
@@ -888,14 +1531,31 @@ function ComplaintSection({ prefilledShopId, onTrack }: { prefilledShopId?: stri
 
           {!form.anonymous && (
             <div className="grid grid-cols-2 gap-4 fade-in">
-              <div><label className="block text-xs font-semibold text-gray-700 mb-1">Your Name</label><input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm outline-none focus:border-blue-400" /></div>
-              <div><label className="block text-xs font-semibold text-gray-700 mb-1">Phone (for updates)</label><input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="+91 XXXXX XXXXX" className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm outline-none focus:border-blue-400" /></div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Your Name</label>
+                <input
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm outline-none focus:border-blue-400"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Phone (for updates)</label>
+                <input
+                  value={form.phone}
+                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                  placeholder="+91 XXXXX XXXXX"
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm outline-none focus:border-blue-400"
+                />
+              </div>
             </div>
           )}
 
-          <button onClick={handleSubmit}
+          <button
+            onClick={handleSubmit}
             disabled={!form.category || !form.description.trim() || (!form.shopId && !form.shopName.trim())}
-            className="w-full py-3.5 bg-orange-600 text-white rounded-xl font-bold text-sm hover:bg-orange-700 transition-all shadow-md disabled:opacity-40 disabled:cursor-not-allowed">
+            className="w-full py-3.5 bg-orange-600 text-white rounded-xl font-bold text-sm hover:bg-orange-700 transition-all shadow-md disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+          >
             Submit Complaint
           </button>
         </div>
@@ -1199,7 +1859,7 @@ function DashboardSection() {
           <h3 className="font-bold text-gray-800 mb-4 text-sm">Shop Compliance Distribution</h3>
           <ResponsiveContainer width="100%" height={200}>
             <PieChart>
-              <Pie data={PIE_DATA} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={75} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`} labelLine={false}>
+              <Pie data={PIE_DATA} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={75} label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`} labelLine={false}>
                 {PIE_DATA.map((e, i) => <Cell key={i} fill={e.color} />)}
               </Pie>
               <Tooltip contentStyle={{ fontSize: 11, borderRadius: 8 }} />
@@ -1211,7 +1871,7 @@ function DashboardSection() {
           <h3 className="font-bold text-gray-800 mb-4 text-sm">Instrument Verification Status</h3>
           <ResponsiveContainer width="100%" height={200}>
             <PieChart>
-              <Pie data={INST_PIE} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={75} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`} labelLine={false}>
+              <Pie data={INST_PIE} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={75} label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`} labelLine={false}>
                 {INST_PIE.map((e, i) => <Cell key={i} fill={e.color} />)}
               </Pie>
               <Tooltip contentStyle={{ fontSize: 11, borderRadius: 8 }} />
@@ -1478,6 +2138,8 @@ export default function PublicPortal({ onBack }: Props) {
   const [section, setSection] = useState<Section>("home");
   const [selectedShop, setSelectedShop] = useState<string | null>(null);
   const [complaintShopId, setComplaintShopId] = useState<string | undefined>(undefined);
+  const [complaintBusinessName, setComplaintBusinessName] = useState<string | undefined>(undefined);
+  const [complaintLocation, setComplaintLocation] = useState<string | undefined>(undefined);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const navigate = (s: string) => {
@@ -1490,8 +2152,10 @@ export default function PublicPortal({ onBack }: Props) {
     navigate("shop");
   };
 
-  const goToComplaint = (shopId?: string) => {
+  const goToComplaint = (shopId?: string, businessName?: string, location?: string) => {
     setComplaintShopId(shopId);
+    setComplaintBusinessName(businessName);
+    setComplaintLocation(location);
     navigate("complaint");
   };
 
@@ -1542,9 +2206,16 @@ export default function PublicPortal({ onBack }: Props) {
       <div ref={scrollRef} className="flex-1 overflow-auto">
         <div className="max-w-5xl mx-auto px-4 py-6">
           {section === "home" && <HomeSection onSection={navigate} onShopSelect={goToShop} />}
-          {section === "nearby" && <NearbySection onShopSelect={goToShop} />}
+          {section === "nearby" && <NearbySection onShopSelect={goToShop} onComplaint={goToComplaint} />}
           {section === "shop" && selectedShop && <ShopDetailSection shopId={selectedShop} onComplaint={goToComplaint} onSection={navigate} />}
-          {section === "complaint" && <ComplaintSection prefilledShopId={complaintShopId} onTrack={() => navigate("track")} />}
+          {section === "complaint" && (
+            <ComplaintSection
+              prefilledShopId={complaintShopId}
+              prefilledBusinessName={complaintBusinessName}
+              prefilledLocation={complaintLocation}
+              onTrack={() => navigate("track")}
+            />
+          )}
           {section === "track" && <TrackSection />}
           {section === "verify" && <VerifySection />}
           {section === "education" && <EducationSection />}

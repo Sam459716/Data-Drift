@@ -6,6 +6,7 @@ interface Props {
   onPublicVerify: () => void;
   onPublicPortal: () => void;
   onPresentation?: () => void;
+  onOpenInstructions?: () => void;
 }
 
 const ROLE_CARDS = [
@@ -14,7 +15,7 @@ const ROLE_CARDS = [
   { role: "admin" as Role, title: "Admin Dashboard", icon: "🛡️", desc: "Full system oversight, analytics, fraud detection, audit logs and officer management.", color: "from-purple-600 to-purple-800", accent: "#7c3aed", creds: "admin@lm.gov.in / admin123" },
 ];
 
-export default function Landing({ onLogin, onPublicVerify, onPublicPortal, onPresentation }: Props) {
+export default function Landing({ onLogin, onPublicVerify, onPublicPortal, onPresentation, onOpenInstructions }: Props) {
   const [loading, setLoading] = useState<Role | null>(null);
   const [showLogin, setShowLogin] = useState<Role | null>(null);
   const [email, setEmail] = useState("");
@@ -38,6 +39,13 @@ export default function Landing({ onLogin, onPublicVerify, onPublicPortal, onPre
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
+            {onOpenInstructions && (
+              <button onClick={onOpenInstructions}
+                className="flex items-center gap-2 px-3.5 py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-sm font-semibold hover:bg-blue-100 transition-all shadow-xs"
+                title="View DataDrift Welcome & Instructions">
+                <span>🛡️</span> Instructions
+              </button>
+            )}
             <button onClick={onPublicPortal}
               className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white rounded-lg text-sm font-medium hover:bg-teal-700 transition-all shadow-sm">
               👥 Consumer Portal
